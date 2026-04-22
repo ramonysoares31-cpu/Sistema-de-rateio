@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Função helpers
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuth() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.perfil == 'admin' &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.ativo == true;
+    }
+
+    function isActiveUser() {
+      return isAuth() &&
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.ativo == true;
+    }
+
+    function myUnidade() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.unidadeId;
+    }
+
+    // ── Usuários ──────────────────────────────────────────────────────────────
+    match /usuarios/{uid} {
+      // Cada usuário lê só o próprio perfil; admin lê todos
+      allow read: if isAuth() && (request.auth.uid == uid || isAdmin());
+      // Só admin cria/edita/deleta usuários
+      allow write: if isAdmin();
+    }
+
+    // ── Unidades ──────────────────────────────────────────────────────────────
+    match /unidades/{unidadeId} {
+      allow read:  if isActiveUser();
+      allow write: if isAdmin();
+    }
+
+    // ── Encargos ──────────────────────────────────────────────────────────────
+    match /encargos/{ano}/meses/{mes}/unidades/{unidadeId} {
+      // Admin lê e escreve tudo
+      // Colaborador só lê a sua própria unidade
+      allow read:  if isAdmin() || (isActiveUser() && myUnidade() == unidadeId);
+      allow write: if isAdmin();
+    }
+
+    // ── Importações (log) ─────────────────────────────────────────────────────
+    match /importacoes/{id} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
