@@ -3,35 +3,99 @@ import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Card, Button, Select, Table, Badge, Modal, SectionTitle, Spinner } from '../../components/ui'
 import { getEncargosDoMes, getUnidades, updateEncargo, setEncargoUnidade } from '../../services/firestore'
 import { uploadPDF } from '../../services/storage'
-import { downloadDemonstrativo, getDemonstrativoBlob } from '../../utils/pdfGenerator'
+import { getDemonstrativoBlob } from '../../utils/pdfGenerator'
 import { formatCurrency, getMesLabel, MESES, getAnos, STATUS_CONFIG, CAMPOS_ENCARGO } from '../../utils/formatters'
 import { Pencil, FileDown, Upload, CheckCircle, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// Valores zerados para um novo encargo
+// ── Valores zerados ────────────────────────────────────────────────────────────
 const ENCARGO_VAZIO = {
-  salarioBase: 0, nFuncionarios: 0,
-  empregado: 0, empresa: 0, terceiros: 0, ratAjustado: 0,
-  salarioFamilia: 0, salarioMaternidade: 0,
-  pis8301: 0, irrf0561: 0, irrfCongruas: 0, irrf1708: 0,
-  cofins5960: 0, pis5979: 0, csll5987: 0, inss1162: 0,
-  fgts: 0, consignado: 0,
-  sst: 0, odonto: 0, seguroVida: 0,
+  salarioBase: '', nFuncionarios: '',
+  empregado: '', empresa: '', terceiros: '', ratAjustado: '',
+  salarioFamilia: '', salarioMaternidade: '',
+  pis8301: '', irrf0561: '', irrfCongruas: '', irrf1708: '',
+  cofins5960: '', pis5979: '', csll5987: '', inss1162: '',
+  fgts: '', consignado: '',
+  sst: '', odonto: '', seguroVida: '',
   totalGPS: 0, totalDARF: 0, totalFGTS: 0, totalGeral: 0,
   status: 'pendente',
 }
 
-// Calcula totais automaticamente
+// ── Calcula totais automaticamente ────────────────────────────────────────────
 function calcularTotais(f) {
-  const totalGPS  = (f.empregado||0) + (f.empresa||0) + (f.terceiros||0) + (f.ratAjustado||0)
-                  - (f.salarioFamilia||0) - (f.salarioMaternidade||0)
-  const totalDARF = (f.pis8301||0) + (f.irrf0561||0) + (f.irrfCongruas||0) + (f.irrf1708||0)
-                  + (f.cofins5960||0) + (f.pis5979||0) + (f.csll5987||0) + (f.inss1162||0)
-  const totalFGTS = (f.fgts||0) + (f.consignado||0)
-  const totalGeral = totalGPS + totalDARF + totalFGTS + (f.sst||0) + (f.odonto||0) + (f.seguroVida||0)
+  const n = v => parseFloat(v) || 0
+  const totalGPS   = n(f.empregado) + n(f.empresa) + n(f.terceiros) + n(f.ratAjustado)
+                   - n(f.salarioFamilia) - n(f.salarioMaternidade)
+  const totalDARF  = n(f.pis8301) + n(f.irrf0561) + n(f.irrfCongruas) + n(f.irrf1708)
+                   + n(f.cofins5960) + n(f.pis5979) + n(f.csll5987) + n(f.inss1162)
+  const totalFGTS  = n(f.fgts) + n(f.consignado)
+  const totalGeral = totalGPS + totalDARF + totalFGTS + n(f.sst) + n(f.odonto) + n(f.seguroVida)
   return { ...f, totalGPS, totalDARF, totalFGTS, totalGeral }
 }
 
+const GRUPOS = ['GPS', 'DARF', 'FGTS', 'Benefícios']
+
+// ── Componente de campos FORA do Encargos (evita perda de foco) ───────────────
+function CamposEncargo({ form, onChange }) {
+  return (
+    <div className="space-y-6">
+      {GRUPOS.map(grupo => {
+        const campos = CAMPOS_ENCARGO.filter(c => c.grupo === grupo && !c.readonly)
+        return (
+          <div key={grupo}>
+            <h4 className="text-xs font-semibold text-surface-200 uppercase tracking-wider mb-3 pb-1 border-b border-surface-100">
+              {grupo}
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              {campos.map(c => (
+                <div key={c.key} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-surface-800">{c.label}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form[c.key] ?? ''}
+                    onChange={e => onChange(c.key, e.target.value)}
+                    placeholder="0,00"
+                    className="px-3 py-2 text-sm rounded-xl border border-surface-200
+                      focus:ring-2 focus:ring-brand-300 focus:outline-none font-mono"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Totais somente leitura */}
+      <div>
+        <h4 className="text-xs font-semibold text-surface-200 uppercase tracking-wider mb-3 pb-1 border-b border-surface-100">
+          Totais (calculados automaticamente)
+        </h4>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { key: 'totalGPS',   label: 'Total GPS' },
+            { key: 'totalDARF',  label: 'Total DARF' },
+            { key: 'totalFGTS',  label: 'Total FGTS' },
+            { key: 'totalGeral', label: 'Total Geral' },
+          ].map(c => (
+            <div key={c.key} className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-surface-800">{c.label}</label>
+              <input
+                type="text"
+                readOnly
+                value={formatCurrency(form[c.key] ?? 0)}
+                className="px-3 py-2 text-sm rounded-xl border bg-surface-50 text-surface-400 border-surface-100 font-mono"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Componente principal ───────────────────────────────────────────────────────
 export default function Encargos() {
   const [ano,         setAno]         = useState(String(new Date().getFullYear()))
   const [mes,         setMes]         = useState(MESES[new Date().getMonth()].value)
@@ -58,19 +122,16 @@ export default function Encargos() {
 
   useEffect(() => { carregar() }, [ano, mes])
 
-  // ── Abrir modal de edição ──────────────────────────────────────────────────
   function abrirEditar(enc) {
     setSelecionado(enc)
     setFormEdit({ ...enc })
     setModal(true)
   }
 
-  // ── Salvar edição ──────────────────────────────────────────────────────────
   async function salvarEdicao() {
     setSaving(true)
     try {
-      const comTotais = calcularTotais(formEdit)
-      await updateEncargo(ano, mes, selecionado.id, comTotais)
+      await updateEncargo(ano, mes, selecionado.id, calcularTotais(formEdit))
       toast.success('Encargo atualizado!')
       setModal(false)
       carregar()
@@ -81,29 +142,22 @@ export default function Encargos() {
     }
   }
 
-  // ── Abrir modal de novo encargo ────────────────────────────────────────────
   function abrirNovo() {
     setFormNovo({ ...ENCARGO_VAZIO })
-    setUnidadeNova(unidades[0]?.id || '')
+    setUnidadeNova('')
     setModalNovo(true)
   }
 
-  // ── Salvar novo encargo ────────────────────────────────────────────────────
   async function salvarNovo() {
     if (!unidadeNova) return toast.error('Selecione uma unidade!')
-
-    // Verificar se já existe encargo para essa unidade neste mês/ano
-    const jaExiste = encargos.find(e => e.id === unidadeNova)
-    if (jaExiste) {
-      toast.error('Já existe um encargo para essa unidade neste mês!')
-      return
+    if (encargos.find(e => e.id === unidadeNova)) {
+      return toast.error('Já existe um encargo para essa unidade neste mês!')
     }
-
     setSaving(true)
     try {
-      const comTotais = calcularTotais(formNovo)
+      const dados = calcularTotais(formNovo)
       await setEncargoUnidade(ano, mes, unidadeNova, {
-        ...comTotais,
+        ...dados,
         status: 'pendente',
         pdfUrl: '',
         pdfGerado: false,
@@ -118,24 +172,20 @@ export default function Encargos() {
     }
   }
 
-  // ── Atualizar campo do novo encargo ───────────────────────────────────────
-  function atualizarCampoNovo(key, value) {
-    setFormNovo(f => calcularTotais({ ...f, [key]: parseFloat(value) || 0 }))
+  function atualizarNovo(key, value) {
+    setFormNovo(f => calcularTotais({ ...f, [key]: value }))
   }
 
-  // ── Atualizar campo da edição ──────────────────────────────────────────────
-  function atualizarCampoEdit(key, value) {
-    setFormEdit(f => calcularTotais({ ...f, [key]: parseFloat(value) || 0 }))
+  function atualizarEdit(key, value) {
+    setFormEdit(f => calcularTotais({ ...f, [key]: value }))
   }
 
-  // ── Marcar como pago ───────────────────────────────────────────────────────
   async function marcarPago(enc) {
     await updateEncargo(ano, mes, enc.id, { status: 'pago' })
     toast.success('Marcado como pago')
     carregar()
   }
 
-  // ── Gerar e fazer upload de PDF ───────────────────────────────────────────
   async function gerarEFazerUploadPDF(enc) {
     const unidade = unidades.find(u => u.id === enc.id)
     if (!unidade) return toast.error('Unidade não encontrada')
@@ -168,14 +218,13 @@ export default function Encargos() {
     }
   }
 
-  // ── Colunas da tabela ──────────────────────────────────────────────────────
   const columns = [
-    { key: 'nomeUnidade', label: 'Unidade' },
-    { key: 'nFuncionarios', label: 'Func.', align: 'right' },
-    { key: 'totalGPS',   label: 'GPS',     align: 'right', render: r => formatCurrency(r.totalGPS) },
-    { key: 'totalDARF',  label: 'DARF',    align: 'right', render: r => formatCurrency(r.totalDARF) },
-    { key: 'totalFGTS',  label: 'FGTS',    align: 'right', render: r => formatCurrency(r.totalFGTS) },
-    { key: 'totalGeral', label: 'Total',   align: 'right', render: r => (
+    { key: 'nomeUnidade',  label: 'Unidade' },
+    { key: 'nFuncionarios',label: 'Func.',  align: 'right' },
+    { key: 'totalGPS',     label: 'GPS',    align: 'right', render: r => formatCurrency(r.totalGPS) },
+    { key: 'totalDARF',    label: 'DARF',   align: 'right', render: r => formatCurrency(r.totalDARF) },
+    { key: 'totalFGTS',    label: 'FGTS',   align: 'right', render: r => formatCurrency(r.totalFGTS) },
+    { key: 'totalGeral',   label: 'Total',  align: 'right', render: r => (
       <span className="font-semibold">{formatCurrency(r.totalGeral)}</span>
     )},
     { key: 'status', label: 'Status', render: r => {
@@ -198,12 +247,8 @@ export default function Encargos() {
             <CheckCircle size={12} className="text-emerald-600" />
           </Button>
         )}
-        <Button
-          size="sm" variant="ghost"
-          loading={uploading === r.id}
-          onClick={() => gerarEFazerUploadPDF(r)}
-          title="Gerar PDF"
-        >
+        <Button size="sm" variant="ghost" loading={uploading === r.id}
+          onClick={() => gerarEFazerUploadPDF(r)} title="Gerar PDF">
           <Upload size={12} />
         </Button>
         <label className="cursor-pointer">
@@ -217,72 +262,9 @@ export default function Encargos() {
     )},
   ]
 
-  const grupos = ['GPS', 'DARF', 'FGTS', 'Benefícios']
-
-  // ── Componente do formulário de campos ─────────────────────────────────────
-  function CamposEncargo({ form, onChange }) {
-    return (
-      <div className="space-y-6">
-        {grupos.map(grupo => {
-          const campos = CAMPOS_ENCARGO.filter(c => c.grupo === grupo && !c.readonly)
-          return (
-            <div key={grupo}>
-              <h4 className="text-xs font-semibold text-surface-200 uppercase tracking-wider mb-3 pb-1 border-b border-surface-100">
-                {grupo}
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                {campos.map(c => (
-                  <div key={c.key} className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-surface-800">{c.label}</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={form[c.key] ?? 0}
-                      onChange={e => onChange(c.key, e.target.value)}
-                      className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none font-mono"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-
-        {/* Totais (somente leitura) */}
-        <div>
-          <h4 className="text-xs font-semibold text-surface-200 uppercase tracking-wider mb-3 pb-1 border-b border-surface-100">
-            Totais (calculados automaticamente)
-          </h4>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { key: 'totalGPS',   label: 'Total GPS' },
-              { key: 'totalDARF',  label: 'Total DARF' },
-              { key: 'totalFGTS',  label: 'Total FGTS' },
-              { key: 'totalGeral', label: 'Total Geral' },
-            ].map(c => (
-              <div key={c.key} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-surface-800">{c.label}</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={formatCurrency(form[c.key] ?? 0)}
-                  className="px-3 py-2 text-sm rounded-xl border bg-surface-50 text-surface-400 border-surface-100 font-mono"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <AdminLayout>
-      <SectionTitle
-        title="Encargos"
-        subtitle="Visualize, edite e adicione encargos por período"
-      />
+      <SectionTitle title="Encargos" subtitle="Visualize, edite e adicione encargos por período" />
 
       {/* Filtros + botão novo */}
       <div className="flex gap-3 mb-6 items-center justify-between">
@@ -294,11 +276,8 @@ export default function Encargos() {
             {MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </Select>
         </div>
-
-        {/* Botão Novo Encargo */}
         <Button onClick={abrirNovo} className="flex items-center gap-2">
-          <Plus size={16} />
-          Novo Encargo
+          <Plus size={16} /> Novo Encargo
         </Button>
       </div>
 
@@ -320,64 +299,47 @@ export default function Encargos() {
 
       {loading ? <Spinner /> : (
         <Card>
-          <Table columns={columns} data={encargos} emptyMessage={`Nenhum encargo lançado para ${getMesLabel(mes)} / ${ano}. Clique em "Novo Encargo" para adicionar.`} />
+          <Table
+            columns={columns}
+            data={encargos}
+            emptyMessage={`Nenhum encargo lançado para ${getMesLabel(mes)} / ${ano}. Clique em "Novo Encargo" para adicionar.`}
+          />
         </Card>
       )}
 
-      {/* ── Modal: NOVO ENCARGO ──────────────────────────────────────────────── */}
+      {/* Modal: NOVO ENCARGO */}
       <Modal open={modalNovo} onClose={() => setModalNovo(false)} title="Novo Encargo" size="lg">
         <div className="space-y-5">
-
-          {/* Seleção de Unidade e Período */}
           <div className="bg-surface-50 rounded-xl p-4 border border-surface-100">
             <h4 className="text-xs font-semibold text-surface-200 uppercase tracking-wider mb-3">
               Unidade e Período
             </h4>
             <div className="grid grid-cols-3 gap-3">
-              <div className="flex flex-col gap-1 col-span-1">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-surface-800">Ano</label>
-                <select
-                  value={ano}
-                  disabled
-                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 bg-surface-50 text-surface-400"
-                >
-                  <option>{ano}</option>
-                </select>
+                <input readOnly value={ano}
+                  className="px-3 py-2 text-sm rounded-xl border border-surface-100 bg-surface-50 text-surface-400" />
               </div>
-              <div className="flex flex-col gap-1 col-span-1">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-surface-800">Mês</label>
-                <select
-                  value={mes}
-                  disabled
-                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 bg-surface-50 text-surface-400"
-                >
-                  <option value={mes}>{getMesLabel(mes)}</option>
-                </select>
+                <input readOnly value={getMesLabel(mes)}
+                  className="px-3 py-2 text-sm rounded-xl border border-surface-100 bg-surface-50 text-surface-400" />
               </div>
-              <div className="flex flex-col gap-1 col-span-1">
+              <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-surface-800">Unidade *</label>
-                <select
-                  value={unidadeNova}
-                  onChange={e => setUnidadeNova(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none"
-                >
+                <select value={unidadeNova} onChange={e => setUnidadeNova(e.target.value)}
+                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none">
                   <option value="">Selecione...</option>
                   {unidades
-                    .filter(u => !encargos.find(e => e.id === u.id)) // Só unidades sem encargo no mês
-                    .map(u => (
-                      <option key={u.id} value={u.id}>{u.nome}</option>
-                    ))
+                    .filter(u => !encargos.find(e => e.id === u.id))
+                    .map(u => <option key={u.id} value={u.id}>{u.nome}</option>)
                   }
                 </select>
               </div>
             </div>
           </div>
 
-          {/* Campos do encargo */}
-          <CamposEncargo
-            form={formNovo}
-            onChange={atualizarCampoNovo}
-          />
+          <CamposEncargo form={formNovo} onChange={atualizarNovo} />
 
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" onClick={() => setModalNovo(false)}>Cancelar</Button>
@@ -388,24 +350,18 @@ export default function Encargos() {
         </div>
       </Modal>
 
-      {/* ── Modal: EDITAR ENCARGO ────────────────────────────────────────────── */}
+      {/* Modal: EDITAR ENCARGO */}
       <Modal open={modal} onClose={() => setModal(false)} title={`Editar — ${selecionado?.nomeUnidade}`} size="lg">
         {selecionado && (
           <div className="space-y-6">
-            <CamposEncargo
-              form={formEdit}
-              onChange={atualizarCampoEdit}
-            />
+            <CamposEncargo form={formEdit} onChange={atualizarEdit} />
 
-            {/* Status e observação */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-surface-800">Status</label>
-                <select
-                  value={formEdit.status || 'pendente'}
+                <select value={formEdit.status || 'pendente'}
                   onChange={e => setFormEdit(f => ({ ...f, status: e.target.value }))}
-                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none"
-                >
+                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none">
                   <option value="pendente">Pendente</option>
                   <option value="pago">Pago</option>
                   <option value="inconsistencia">Inconsistência</option>
@@ -413,12 +369,9 @@ export default function Encargos() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-surface-800">Observação</label>
-                <input
-                  type="text"
-                  value={formEdit.observacao || ''}
+                <input type="text" value={formEdit.observacao || ''}
                   onChange={e => setFormEdit(f => ({ ...f, observacao: e.target.value }))}
-                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none"
-                />
+                  className="px-3 py-2 text-sm rounded-xl border border-surface-200 focus:ring-2 focus:ring-brand-300 focus:outline-none" />
               </div>
             </div>
 
