@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { Card, Button, Select, Table, Badge, Modal, SectionTitle, Spinner } from '../../components/ui'
-import { getEncargosDoMes, getUnidades, updateEncargo, setEncargoUnidade } from '../../services/firestore'
+import { getEncargosDoMes, getUnidades, updateEncargo, setEncargoUnidade, deleteEncargo } from '../../services/firestore'
 import { uploadPDF } from '../../services/storage'
 import { getDemonstrativoBlob } from '../../utils/pdfGenerator'
 import { formatCurrency, getMesLabel, MESES, getAnos, STATUS_CONFIG, CAMPOS_ENCARGO } from '../../utils/formatters'
-import { Pencil, FileDown, Upload, CheckCircle, Plus } from 'lucide-react'
+import { Pencil, FileDown, Upload, CheckCircle, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ── Valores zerados ────────────────────────────────────────────────────────────
@@ -186,6 +186,20 @@ export default function Encargos() {
     carregar()
   }
 
+  async function excluirEncargo(enc) {
+    const confirmado = window.confirm(
+      `Tem certeza que deseja excluir o encargo de "${enc.nomeUnidade}"?\n\nEssa ação não pode ser desfeita!`
+    )
+    if (!confirmado) return
+    try {
+      await deleteEncargo(ano, mes, enc.id)
+      toast.success('Encargo excluído!')
+      carregar()
+    } catch (e) {
+      toast.error('Erro ao excluir: ' + e.message)
+    }
+  }
+
   async function gerarEFazerUploadPDF(enc) {
     const unidade = unidades.find(u => u.id === enc.id)
     if (!unidade) return toast.error('Unidade não encontrada')
@@ -239,7 +253,7 @@ export default function Encargos() {
     ) : <span className="text-xs text-surface-200">—</span>},
     { key: 'acoes', label: '', render: r => (
       <div className="flex items-center gap-1 justify-end">
-        <Button size="sm" variant="ghost" onClick={() => abrirEditar(r)}>
+        <Button size="sm" variant="ghost" onClick={() => abrirEditar(r)} title="Editar">
           <Pencil size={12} />
         </Button>
         {r.status !== 'pago' && (
@@ -258,6 +272,9 @@ export default function Encargos() {
             <FileDown size={12} /> Upload
           </span>
         </label>
+        <Button size="sm" variant="ghost" onClick={() => excluirEncargo(r)} title="Excluir encargo">
+          <Trash2 size={12} className="text-red-500" />
+        </Button>
       </div>
     )},
   ]

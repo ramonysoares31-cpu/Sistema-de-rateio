@@ -96,6 +96,10 @@ export async function updateEncargo(ano, mes, unidadeId, data) {
   })
 }
 
+export async function deleteEncargo(ano, mes, unidadeId) {
+  await deleteDoc(doc(db, encargosPath(ano, mes), unidadeId))
+}
+
 // Busca encargos de uma unidade em todos os meses de um ano
 export async function getHistoricoUnidade(ano, unidadeId) {
   const meses = [
